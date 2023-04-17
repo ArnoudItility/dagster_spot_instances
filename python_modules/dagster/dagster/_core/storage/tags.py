@@ -68,6 +68,8 @@ USER_EDITABLE_SYSTEM_TAGS = [
     MAX_RUNTIME_SECONDS_TAG,
 ]
 
+GLOBAL_CONCURRENCY_TAG = f"{SYSTEM_TAG_PREFIX}pool"
+
 # In cloud, we tag runs with the email of the user who triggered the run
 # This is used to display the user in the UI
 USER_TAG = "user"
