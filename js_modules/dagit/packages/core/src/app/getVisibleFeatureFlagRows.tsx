@@ -28,4 +28,8 @@ export const getVisibleFeatureFlagRows = () => [
     key: 'Experimental overview assets tab',
     flagType: FeatureFlag.flagOverviewAssetsTab,
   },
+  {
+    key: 'Experimental instance-level concurrency limits',
+    flagType: FeatureFlag.flagInstanceConcurrencyLimits,
+  },
 ];
