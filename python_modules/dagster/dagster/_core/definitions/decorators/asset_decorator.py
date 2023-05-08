@@ -1,7 +1,6 @@
 import warnings
 from inspect import Parameter
 from typing import (
-    TYPE_CHECKING,
     AbstractSet,
     Any,
     Callable,
@@ -45,9 +44,6 @@ from ..partition import PartitionsDefinition
 from ..policy import RetryPolicy
 from ..resource_definition import ResourceDefinition
 from ..utils import DEFAULT_IO_MANAGER_KEY, NoValueSentinel
-
-if TYPE_CHECKING:
-    pass
 
 
 @overload
@@ -270,6 +266,7 @@ class _Asset:
         self.required_resource_keys = check.opt_set_param(
             required_resource_keys, "required_resource_keys"
         )
+        check.invariant(not (io_manager_key and io_manager_def), "Cannot provide both io_manager_key and io_manager_def to Asset")
         self.io_manager_key = io_manager_key
         self.io_manager_def = io_manager_def
         self.config_schema = config_schema
