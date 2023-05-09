@@ -1,5 +1,6 @@
 from dagster._core.libraries import DagsterLibraryRegistry
 
+from .asset_decorator import dbt_multi_asset as dbt_multi_asset
 from .asset_defs import (
     load_assets_from_dbt_manifest as load_assets_from_dbt_manifest,
     load_assets_from_dbt_project as load_assets_from_dbt_project,
@@ -11,6 +12,7 @@ from .cli import (
     DbtCliResource as DbtCliResource,
     dbt_cli_resource as dbt_cli_resource,
 )
+from .cli.resources_v2 import DbtManifest as DbtManifest
 from .cloud import (
     DbtCloudClientResource as DbtCloudClientResource,
     DbtCloudOutput as DbtCloudOutput,
