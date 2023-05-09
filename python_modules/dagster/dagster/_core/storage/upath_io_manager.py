@@ -252,11 +252,19 @@ class UPathIOManager(MemoizableIOManager):
             return None
 
         if context.has_asset_partitions:
-            paths = self._get_paths_for_partitions(context)
-            assert len(paths) == 1
-            path = list(paths.values())[0]
+            asset_partition_keys = context.asset_partition_keys
+            if len(asset_partition_keys) > 1:
+                self._handle_multiple_outputs(context, obj)
+            else:
+                paths = self._get_paths_for_partitions(context)
+                assert len(paths) == 1
+                path = list(paths.values())[0]
+                self._dump_one_output(context, path, obj)
         else:
             path = self._get_path(context)
+            self._dump_one_output(context, path, obj)
+
+    def _dump_one_output(self, context: OutputContext, path: UPath, obj: Any):
         self.make_directory(path.parent)
         context.log.debug(self.get_writing_output_log_message(path))
         self.dump_to_path(context=context, obj=obj, path=path)
@@ -265,7 +273,12 @@ class UPathIOManager(MemoizableIOManager):
         custom_metadata = self.get_metadata(context=context, obj=obj)
         metadata.update(custom_metadata)  # type: ignore
 
-        context.add_output_metadata(metadata)
+        # context.add_output_metadata(metadata)
+
+    def _handle_multiple_outputs(self, context: OutputContext, obj: Dict[str, Any]):
+        paths = self._get_paths_for_partitions(context)
+        for key, path in paths.items():
+            self._dump_one_output(context, path, obj[key])
 
 
 def is_dict_type(type_obj) -> bool:

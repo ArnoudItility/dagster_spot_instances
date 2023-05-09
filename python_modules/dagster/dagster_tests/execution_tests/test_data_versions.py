@@ -6,6 +6,7 @@ from dagster import (
     AssetsDefinition,
     DagsterInstance,
     IOManager,
+    RunConfig,
     SourceAsset,
     asset,
     io_manager,
@@ -13,6 +14,7 @@ from dagster import (
     observable_source_asset,
 )
 from dagster._config.field import Field
+from dagster._config.pythonic_config import Config
 from dagster._core.definitions.asset_graph import AssetGraph
 from dagster._core.definitions.asset_out import AssetOut
 from dagster._core.definitions.data_version import (
@@ -153,7 +155,7 @@ def materialize_asset(
     *,
     is_multi: Literal[True],
     partition_key: Optional[str] = None,
-    run_config: Optional[Mapping[str, Any]] = None,
+    run_config: Optional[Union[RunConfig, Mapping[str, Any]]] = None,
 ) -> MaterializationTable:
     ...
 
@@ -166,7 +168,7 @@ def materialize_asset(
     *,
     is_multi: Literal[False] = ...,
     partition_key: Optional[str] = None,
-    run_config: Optional[Mapping[str, Any]] = None,
+    run_config: Optional[Union[RunConfig, Mapping[str, Any]]] = None,
 ) -> AssetMaterialization:
     ...
 
@@ -179,7 +181,7 @@ def materialize_asset(
     *,
     is_multi: bool = False,
     partition_key: Optional[str] = None,
-    run_config: Optional[Mapping[str, Any]] = None,
+    run_config: Optional[Union[RunConfig, Mapping[str, Any]]] = None,
 ) -> Union[AssetMaterialization, MaterializationTable]:
     assets: List[Union[AssetsDefinition, SourceAsset]] = []
     for asset_def in all_assets:
@@ -232,10 +234,15 @@ def materialize_twice(
     return mat1, mat2
 
 
-def get_stale_status_resolver(instance, assets) -> CachingStaleStatusResolver:
+def get_stale_status_resolver(
+    instance: DagsterInstance,
+    assets: Sequence[Union[AssetsDefinition, SourceAsset]],
+    resolve_partitions: bool = False,
+) -> CachingStaleStatusResolver:
     return CachingStaleStatusResolver(
         instance=instance,
         asset_graph=AssetGraph.from_assets(assets),
+        resolve_partitions=resolve_partitions,
     )
 
 
@@ -628,7 +635,7 @@ def test_stale_status_redundant_upstream_materialization() -> None:
         assert status_resolver.get_status(asset2.key) == StaleStatus.FRESH
 
 
-def test_stale_status_partitioned() -> None:
+def test_stale_status_partitions_disabled() -> None:
     partitions_def = StaticPartitionsDefinition(["foo"])
 
     @asset(partitions_def=partitions_def)
@@ -646,14 +653,14 @@ def test_stale_status_partitioned() -> None:
     all_assets = [asset1, asset2, asset3]
     with instance_for_test() as instance:
         status_resolver = get_stale_status_resolver(instance, all_assets)
-        assert status_resolver.get_status(asset1.key) == StaleStatus.MISSING
-        assert status_resolver.get_status(asset2.key) == StaleStatus.MISSING
+        assert status_resolver.get_status(asset1.key, "foo") == StaleStatus.MISSING
+        assert status_resolver.get_status(asset2.key, "foo") == StaleStatus.MISSING
         assert status_resolver.get_status(asset3.key) == StaleStatus.MISSING
 
         materialize_assets([asset1, asset2], partition_key="foo", instance=instance)
         status_resolver = get_stale_status_resolver(instance, all_assets)
-        assert status_resolver.get_status(asset1.key) == StaleStatus.FRESH
-        assert status_resolver.get_status(asset2.key) == StaleStatus.FRESH
+        assert status_resolver.get_status(asset1.key, "foo") == StaleStatus.FRESH
+        assert status_resolver.get_status(asset2.key, "foo") == StaleStatus.FRESH
         assert status_resolver.get_status(asset3.key) == StaleStatus.MISSING
 
         materialize_asset(all_assets, asset3, instance)
@@ -663,9 +670,100 @@ def test_stale_status_partitioned() -> None:
         # Downstream values are not stale even after upstream changed
         materialize_asset(all_assets, asset1, instance, partition_key="foo")
         status_resolver = get_stale_status_resolver(instance, all_assets)
-        assert status_resolver.get_status(asset1.key) == StaleStatus.FRESH
-        assert status_resolver.get_status(asset2.key) == StaleStatus.FRESH
+        assert status_resolver.get_status(asset1.key, "foo") == StaleStatus.FRESH
+        assert status_resolver.get_status(asset2.key, "foo") == StaleStatus.FRESH
         assert status_resolver.get_status(asset3.key) == StaleStatus.FRESH
+
+
+def test_stale_status_partitions_disabled_code_versions() -> None:
+    partitions_def = StaticPartitionsDefinition(["foo"])
+
+    @asset(code_version="1", partitions_def=partitions_def)
+    def asset1():
+        ...
+
+    @asset(code_version="1", partitions_def=partitions_def)
+    def asset2(asset1):
+        ...
+
+    all_assets = [asset1, asset2]
+    with instance_for_test() as instance:
+        materialize_assets([asset1, asset2], partition_key="foo", instance=instance)
+
+        status_resolver = get_stale_status_resolver(instance, all_assets)
+        assert status_resolver.get_status(asset1.key, "foo") == StaleStatus.FRESH
+        assert status_resolver.get_status(asset2.key, "foo") == StaleStatus.FRESH
+
+        @asset(code_version="2", partitions_def=partitions_def)
+        def asset1():
+            ...
+
+        all_assets = [asset1, asset2]
+        status_resolver = get_stale_status_resolver(instance, all_assets)
+        assert status_resolver.get_status(asset1.key, "foo") == StaleStatus.STALE
+        assert status_resolver.get_status(asset2.key, "foo") == StaleStatus.STALE
+
+
+def test_stale_status_partitions_enabled() -> None:
+    partitions_def = StaticPartitionsDefinition(["foo"])
+
+    class AssetConfig(Config):
+        value: int = 1
+
+    @asset(partitions_def=partitions_def)
+    def asset1(config: AssetConfig):
+        return Output(config.value, data_version=DataVersion(str(config.value)))
+
+    @asset(partitions_def=partitions_def)
+    def asset2(asset1):
+        ...
+
+    @asset
+    def asset3(asset1):
+        ...
+
+    all_assets = [asset1, asset2, asset3]
+    with instance_for_test() as instance:
+        status_resolver = get_stale_status_resolver(instance, all_assets, True)
+        assert status_resolver.get_status(asset1.key, "foo") == StaleStatus.MISSING
+        assert status_resolver.get_status(asset2.key, "foo") == StaleStatus.MISSING
+        assert status_resolver.get_status(asset3.key) == StaleStatus.MISSING
+
+        materialize_assets([asset1, asset2], partition_key="foo", instance=instance)
+        status_resolver = get_stale_status_resolver(instance, all_assets, True)
+        assert status_resolver.get_status(asset1.key, "foo") == StaleStatus.FRESH
+        assert status_resolver.get_status(asset2.key, "foo") == StaleStatus.FRESH
+        assert status_resolver.get_status(asset3.key) == StaleStatus.MISSING
+
+        materialize_asset(all_assets, asset3, instance)
+        status_resolver = get_stale_status_resolver(instance, all_assets, True)
+        assert status_resolver.get_status(asset3.key) == StaleStatus.FRESH
+
+        # Downstream values are not stale after upstream rematerialized with same version
+        materialize_asset(
+            all_assets,
+            asset1,
+            instance,
+            partition_key="foo",
+            run_config=RunConfig({"asset1": AssetConfig(value=1)}),
+        )
+        status_resolver = get_stale_status_resolver(instance, all_assets, True)
+        assert status_resolver.get_status(asset1.key, "foo") == StaleStatus.FRESH
+        assert status_resolver.get_status(asset2.key, "foo") == StaleStatus.FRESH
+        assert status_resolver.get_status(asset3.key) == StaleStatus.FRESH
+
+        # Downstream values are not stale after upstream rematerialized with same version
+        materialize_asset(
+            all_assets,
+            asset1,
+            instance,
+            partition_key="foo",
+            run_config=RunConfig({"asset1": AssetConfig(value=2)}),
+        )
+        status_resolver = get_stale_status_resolver(instance, all_assets, True)
+        assert status_resolver.get_status(asset1.key, "foo") == StaleStatus.FRESH
+        assert status_resolver.get_status(asset2.key, "foo") == StaleStatus.STALE
+        assert status_resolver.get_status(asset3.key) == StaleStatus.STALE
 
 
 def test_stale_status_manually_versioned() -> None:
@@ -931,6 +1029,7 @@ def test_legacy_data_version_tags():
         assert extract_data_provenance_from_entry(record.event_log_entry) == DataProvenance(
             code_version="1",
             input_data_versions={AssetKey(["foo"]): DataVersion("alpha")},
+            input_storage_ids={AssetKey(["foo"]): 3},
             is_user_provided=True,
         )
 

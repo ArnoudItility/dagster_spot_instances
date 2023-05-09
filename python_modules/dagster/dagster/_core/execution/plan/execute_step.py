@@ -29,6 +29,7 @@ from dagster._core.definitions.data_version import (
     DATA_VERSION_IS_USER_PROVIDED_TAG,
     DATA_VERSION_TAG,
     DEFAULT_DATA_VERSION,
+    NULL_EVENT_POINTER,
     DataVersion,
     compute_logical_data_version,
     extract_data_version_from_entry,
@@ -532,6 +533,7 @@ def _get_input_provenance_data(
     input_provenance: Dict[AssetKey, _InputProvenanceData] = {}
     deps = step_context.job_def.asset_layer.upstream_assets_for_asset(asset_key)
     for key in deps:
+
         # For deps external to this step, this will retrieve the cached record that was stored prior
         # to step execution. For inputs internal to this step, it may trigger a query to retrieve
         # the most recent materialization record (it will retrieve a cached record if it's already
@@ -544,6 +546,7 @@ def _get_input_provenance_data(
             )
         else:
             data_version = DEFAULT_DATA_VERSION
+
         input_provenance[key] = {
             "data_version": data_version,
             "storage_id": event.storage_id if event else None,
@@ -562,7 +565,7 @@ def _build_data_version_tags(
     for key, meta in input_provenance_data.items():
         tags[get_input_data_version_tag(key)] = meta["data_version"].value
         tags[get_input_event_pointer_tag(key)] = (
-            str(meta["storage_id"]) if meta["storage_id"] else "NULL"
+            str(meta["storage_id"]) if meta["storage_id"] else NULL_EVENT_POINTER
         )
     tags[DATA_VERSION_TAG] = data_version.value
     if data_version_is_user_provided:
