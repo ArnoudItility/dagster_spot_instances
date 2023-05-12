@@ -12,7 +12,12 @@ from .cli import (
     DbtCliResource as DbtCliResource,
     dbt_cli_resource as dbt_cli_resource,
 )
-from .cli.resources_v2 import DbtManifest as DbtManifest
+from .cli.resources_v2 import (
+    DbtClientV2 as DbtClientV2,
+    DbtCliEventV2 as DbtCliEventV2,
+    DbtCliTask as DbtCliTask,
+    DbtManifest as DbtManifest,
+)
 from .cloud import (
     DbtCloudClientResource as DbtCloudClientResource,
     DbtCloudOutput as DbtCloudOutput,
