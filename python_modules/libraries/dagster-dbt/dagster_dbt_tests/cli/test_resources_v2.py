@@ -3,6 +3,7 @@ from typing import List
 import pytest
 from dagster import AssetObservation, Output
 from dagster_dbt import DbtClientV2, DbtCliEventV2, DbtManifest
+from pytest_mock import MockerFixture
 
 from ..conftest import TEST_PROJECT_DIR
 
@@ -23,6 +24,53 @@ def test_dbt_cli(global_config: List[str], command: str) -> None:
 
     assert dbt_cli_task.process.args == ["dbt", *global_config, command]
     assert dbt_cli_task.process.returncode == 0
+
+
+def test_dbt_cli_subsetted_execution(mocker: MockerFixture) -> None:
+    mock_context = mocker.MagicMock()
+
+    type(mock_context.op).tags = mocker.PropertyMock(return_value={})
+    type(mock_context).selected_output_names = mocker.PropertyMock(
+        return_value=["least_caloric", "sort_by_calories"]
+    )
+
+    dbt = DbtClientV2(project_dir=TEST_PROJECT_DIR)
+    dbt_cli_task = dbt.cli(["run"], context=mock_context, manifest=manifest)
+
+    dbt_cli_task.wait()
+
+    assert dbt_cli_task.process.args == [
+        "dbt",
+        "run",
+        "--select",
+        (
+            "fqn:dagster_dbt_test_project.subdir.least_caloric"
+            " fqn:dagster_dbt_test_project.sort_by_calories"
+        ),
+    ]
+    assert dbt_cli_task.process.returncode is not None
+
+
+def test_dbt_cli_default_selection(mocker: MockerFixture) -> None:
+    mock_context = mocker.MagicMock()
+    type(mock_context.op).tags = mocker.PropertyMock(
+        return_value={
+            "dagster-dbt/select": "fqn:*",
+            "dagster-dbt/exclude": "fqn:*",
+        }
+    )
+    type(mock_context).selected_output_names = mocker.PropertyMock(
+        return_value=["least_caloric", "sort_by_calories"]
+    )
+    mock_context.assets_def.node_keys_by_output_name.__len__.return_value = 2
+
+    dbt = DbtClientV2(project_dir=TEST_PROJECT_DIR)
+    dbt_cli_task = dbt.cli(["run"], context=mock_context, manifest=manifest)
+
+    dbt_cli_task.wait()
+
+    assert dbt_cli_task.process.args == ["dbt", "run", "--select", "fqn:*", "--exclude", "fqn:*"]
+    assert dbt_cli_task.process.returncode is not None
 
 
 @pytest.mark.parametrize(
