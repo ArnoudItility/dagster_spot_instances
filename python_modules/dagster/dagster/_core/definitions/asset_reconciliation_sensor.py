@@ -366,7 +366,7 @@ class AssetReconciliationCursor(NamedTuple):
             serialized_subset,
         ) in serialized_materialized_or_requested_root_partitions_by_asset_key.items():
             key = AssetKey.from_user_string(key_str)
-            if key not in asset_graph.non_source_asset_keys:
+            if key not in asset_graph.materializable_asset_keys:
                 continue
 
             partitions_def = asset_graph.get_partitions_def(key)
@@ -921,7 +921,7 @@ def determine_asset_partitions_to_auto_materialize_for_freshness(
         for key in level:
             if (
                 key not in target_asset_keys_and_parents
-                or key not in asset_graph.non_source_asset_keys
+                or key not in asset_graph.materializable_asset_keys
                 or not asset_graph.get_downstream_freshness_policies(asset_key=key)
             ):
                 continue

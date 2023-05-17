@@ -123,7 +123,7 @@ def get_repo_with_root_assets_different_partitions() -> RepositoryDefinition:
 
 def test_launch_asset_backfill_read_only_context():
     repo = get_repo()
-    all_asset_keys = repo.asset_graph.all_asset_keys
+    all_asset_keys = repo.asset_graph.materializable_asset_keys
 
     with instance_for_test() as instance:
         # read-only context fails
@@ -153,7 +153,7 @@ def test_launch_asset_backfill_read_only_context():
 
 def test_launch_asset_backfill_all_partitions():
     repo = get_repo()
-    all_asset_keys = repo.asset_graph.all_asset_keys
+    all_asset_keys = repo.asset_graph.materializable_asset_keys
 
     with instance_for_test() as instance:
         with define_out_of_process_context(__file__, "get_repo", instance) as context:
@@ -215,7 +215,7 @@ def test_launch_asset_backfill_all_partitions_asset_selection():
 
 def test_launch_asset_backfill_all_partitions_root_assets_different_partitions():
     repo = get_repo_with_root_assets_different_partitions()
-    all_asset_keys = repo.asset_graph.all_asset_keys
+    all_asset_keys = repo.asset_graph.materializable_asset_keys
 
     with instance_for_test() as instance:
         with define_out_of_process_context(
@@ -251,7 +251,7 @@ def test_launch_asset_backfill_all_partitions_root_assets_different_partitions()
 
 def test_launch_asset_backfill():
     repo = get_repo()
-    all_asset_keys = repo.asset_graph.all_asset_keys
+    all_asset_keys = repo.asset_graph.materializable_asset_keys
 
     with instance_for_test() as instance:
         with define_out_of_process_context(__file__, "get_repo", instance) as context:
@@ -303,7 +303,7 @@ def test_launch_asset_backfill():
 
 def test_remove_partitions_defs_after_backfill():
     repo = get_repo()
-    all_asset_keys = repo.asset_graph.all_asset_keys
+    all_asset_keys = repo.asset_graph.materializable_asset_keys
 
     with instance_for_test() as instance:
         with define_out_of_process_context(__file__, "get_repo", instance) as context:
@@ -358,7 +358,7 @@ def test_remove_partitions_defs_after_backfill():
 
 def test_launch_asset_backfill_with_non_partitioned_asset():
     repo = get_repo_with_non_partitioned_asset()
-    all_asset_keys = repo.asset_graph.all_asset_keys
+    all_asset_keys = repo.asset_graph.materializable_asset_keys
 
     with instance_for_test() as instance:
         with define_out_of_process_context(
@@ -402,7 +402,7 @@ def get_daily_hourly_repo() -> RepositoryDefinition:
 
 def test_launch_asset_backfill_with_upstream_anchor_asset():
     repo = get_daily_hourly_repo()
-    all_asset_keys = repo.asset_graph.all_asset_keys
+    all_asset_keys = repo.asset_graph.materializable_asset_keys
 
     hourly_partitions = ["2020-01-02-23:00", "2020-01-02-22:00", "2020-01-03-00:00"]
 
@@ -469,7 +469,7 @@ def get_daily_two_hourly_repo() -> RepositoryDefinition:
 
 def test_launch_asset_backfill_with_two_anchor_assets():
     repo = get_daily_two_hourly_repo()
-    all_asset_keys = repo.asset_graph.all_asset_keys
+    all_asset_keys = repo.asset_graph.materializable_asset_keys
 
     hourly_partitions = ["2020-01-02-23:00", "2020-01-02-22:00", "2020-01-03-00:00"]
 
@@ -527,7 +527,7 @@ def get_daily_hourly_non_partitioned_repo() -> RepositoryDefinition:
 
 def test_launch_asset_backfill_with_upstream_anchor_asset_and_non_partitioned_asset():
     repo = get_daily_hourly_non_partitioned_repo()
-    all_asset_keys = repo.asset_graph.all_asset_keys
+    all_asset_keys = repo.asset_graph.materializable_asset_keys
 
     hourly_partitions = ["2020-01-02-23:00", "2020-01-02-22:00", "2020-01-03-00:00"]
 
