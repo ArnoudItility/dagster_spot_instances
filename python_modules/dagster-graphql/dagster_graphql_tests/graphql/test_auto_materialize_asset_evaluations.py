@@ -21,6 +21,7 @@ query GetEvaluationsQuery($assetKey: AssetKeyInput!, $limit: Int!, $cursor: BigI
             __typename
             ... on AutoMaterializeConditionWithDecisionType {
                 decisionType
+                partitionKeys
             }
         }
     }
@@ -33,7 +34,7 @@ class TestAutoMaterializeAssetEvaluations(ExecutingGraphQLContextTestMatrix):
         results = execute_dagster_graphql(
             graphql_context,
             QUERY,
-            variables={"assetKey": {"path": ["foo"]}, "limit": 10, "cursor": None},
+            variables={"assetKey": {"path": ["asset_one"]}, "limit": 10, "cursor": None},
         )
         assert results.data == {"autoMaterializeAssetEvaluations": []}
 
@@ -85,6 +86,7 @@ class TestAutoMaterializeAssetEvaluations(ExecutingGraphQLContextTestMatrix):
                         {
                             "__typename": "MissingAutoMaterializeCondition",
                             "decisionType": "MATERIALIZE",
+                            "partitionKeys": None,
                         }
                     ],
                 }
@@ -95,7 +97,11 @@ class TestAutoMaterializeAssetEvaluations(ExecutingGraphQLContextTestMatrix):
         results = execute_dagster_graphql(
             graphql_context,
             QUERY,
-            variables={"assetKey": {"path": ["foo"]}, "limit": 10, "cursor": None},
+            variables={
+                "assetKey": {"path": ["upstream_static_partitioned_asset"]},
+                "limit": 10,
+                "cursor": None,
+            },
         )
         assert results.data == {"autoMaterializeAssetEvaluations": []}
 
@@ -105,7 +111,7 @@ class TestAutoMaterializeAssetEvaluations(ExecutingGraphQLContextTestMatrix):
             evaluation_id=10,
             asset_evaluations=[
                 AutoMaterializeAssetEvaluation(
-                    asset_key=AssetKey("asset_two"),
+                    asset_key=AssetKey("upstream_static_partitioned_asset"),
                     conditions=[
                         (
                             MissingAutoMaterializeCondition(),
@@ -125,7 +131,11 @@ class TestAutoMaterializeAssetEvaluations(ExecutingGraphQLContextTestMatrix):
         results = execute_dagster_graphql(
             graphql_context,
             QUERY,
-            variables={"assetKey": {"path": ["asset_two"]}, "limit": 10, "cursor": None},
+            variables={
+                "assetKey": {"path": ["upstream_static_partitioned_asset"]},
+                "limit": 10,
+                "cursor": None,
+            },
         )
         assert results.data == {
             "autoMaterializeAssetEvaluations": [
@@ -137,6 +147,7 @@ class TestAutoMaterializeAssetEvaluations(ExecutingGraphQLContextTestMatrix):
                         {
                             "__typename": "MissingAutoMaterializeCondition",
                             "decisionType": "MATERIALIZE",
+                            "partitionKeys": ["a"],
                         }
                     ],
                 }

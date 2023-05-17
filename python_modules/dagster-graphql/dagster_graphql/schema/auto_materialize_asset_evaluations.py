@@ -1,5 +1,8 @@
+from typing import Optional, Tuple, Union, cast
+
 import dagster._check as check
 import graphene
+from dagster import PartitionsDefinition
 from dagster._core.definitions.auto_materialize_condition import (
     AutoMaterializeCondition,
     AutoMaterializeDecisionType,
@@ -9,6 +12,7 @@ from dagster._core.definitions.auto_materialize_condition import (
     ParentMaterializedAutoMaterializeCondition,
     ParentOutdatedAutoMaterializeCondition,
 )
+from dagster._core.errors import DagsterError
 from dagster._core.scheduler.instigation import AutoMaterializeAssetEvaluationRecord
 
 from .util import non_null_list
@@ -18,6 +22,7 @@ GrapheneAutoMaterializeDecisionType = graphene.Enum.from_enum(AutoMaterializeDec
 
 class GrapheneAutoMaterializeConditionWithDecisionType(graphene.Interface):
     decisionType = graphene.NonNull(GrapheneAutoMaterializeDecisionType)
+    partitionKeys = graphene.List(graphene.NonNull(graphene.String))
 
     class Meta:
         name = "AutoMaterializeConditionWithDecisionType"
@@ -65,23 +70,43 @@ class GrapheneAutoMaterializeCondition(graphene.Union):
         )
 
 
-def create_graphene_auto_materialize_condition(condition: AutoMaterializeCondition):
-    if isinstance(condition, FreshnessAutoMaterializeCondition):
-        return GrapheneFreshnessAutoMaterializeCondition(decisionType=condition.decision_type)
-    elif isinstance(condition, DownstreamFreshnessAutoMaterializeCondition):
-        return GrapheneDownstreamFreshnessAutoMaterializeCondition(
-            decisionType=condition.decision_type
+DAGSTER_NAMEDTUPLE_TO_GRAPHENE_MAP = {
+    FreshnessAutoMaterializeCondition: GrapheneFreshnessAutoMaterializeCondition,
+    DownstreamFreshnessAutoMaterializeCondition: GrapheneDownstreamFreshnessAutoMaterializeCondition,
+    ParentMaterializedAutoMaterializeCondition: GrapheneParentMaterializedAutoMaterializeCondition,
+    MissingAutoMaterializeCondition: GrapheneMissingAutoMaterializeCondition,
+    ParentOutdatedAutoMaterializeCondition: GrapheneParentOutdatedAutoMaterializeCondition,
+}
+
+
+def create_graphene_auto_materialize_condition(
+    condition: Union[AutoMaterializeCondition, Tuple[AutoMaterializeCondition, str]],
+    partitions_def: Optional[PartitionsDefinition],
+):
+    if partitions_def is not None:
+        if not len(condition) == 2 and isinstance(condition[1], str):
+            raise DagsterError(
+                f"Unexpected condition type {type(condition)} for partitions definition"
+                f" {partitions_def}"
+            )
+        auto_materialize_condition, serialized_subset = cast(
+            Tuple[AutoMaterializeCondition, str], condition
         )
-    elif isinstance(condition, ParentMaterializedAutoMaterializeCondition):
-        return GrapheneParentMaterializedAutoMaterializeCondition(
-            decisionType=condition.decision_type
-        )
-    elif isinstance(condition, MissingAutoMaterializeCondition):
-        return GrapheneMissingAutoMaterializeCondition(decisionType=condition.decision_type)
-    elif isinstance(condition, ParentOutdatedAutoMaterializeCondition):
-        return GrapheneParentOutdatedAutoMaterializeCondition(decisionType=condition.decision_type)
+        subset = partitions_def.deserialize_subset(serialized_subset)
+        partition_keys = subset.get_partition_keys()
     else:
-        check.failed(f"Unexpected condition type {type(condition)}")
+        auto_materialize_condition = cast(AutoMaterializeCondition, condition)
+        partition_keys = None
+
+    check.invariant(
+        type(auto_materialize_condition) in DAGSTER_NAMEDTUPLE_TO_GRAPHENE_MAP,
+        f"Unexpected condition type {type(auto_materialize_condition)}",
+    )
+
+    graphene_type = DAGSTER_NAMEDTUPLE_TO_GRAPHENE_MAP[type(auto_materialize_condition)]
+    return graphene_type(
+        decisionType=auto_materialize_condition.decision_type, partitionKeys=partition_keys
+    )
 
 
 class GrapheneAutoMaterializeAssetEvaluationRecord(graphene.ObjectType):
@@ -95,18 +120,19 @@ class GrapheneAutoMaterializeAssetEvaluationRecord(graphene.ObjectType):
     class Meta:
         name = "AutoMaterializeAssetEvaluationRecord"
 
-    def __init__(self, record: AutoMaterializeAssetEvaluationRecord):
-        conditions = [
-            # NOTE: Hacky check for if this is partitioned or not! Python doesn't support isinstance with Unions,
-            # so instead we check against __args__ which is the list of types that the Union is composed of
-            i if isinstance(i, AutoMaterializeCondition.__args__) else i[0]  # type: ignore
-            for i in record.evaluation.conditions
-        ]
+    def __init__(
+        self,
+        record: AutoMaterializeAssetEvaluationRecord,
+        partitions_def: Optional[PartitionsDefinition],
+    ):
         super().__init__(
             id=record.id,
             evaluationId=record.evaluation_id,
             numRequested=record.evaluation.num_requested,
             numSkipped=record.evaluation.num_skipped,
             numDiscarded=record.evaluation.num_discarded,
-            conditions=[create_graphene_auto_materialize_condition(c) for c in conditions],
+            conditions=[
+                create_graphene_auto_materialize_condition(c, partitions_def)
+                for c in record.evaluation.conditions
+            ],
         )

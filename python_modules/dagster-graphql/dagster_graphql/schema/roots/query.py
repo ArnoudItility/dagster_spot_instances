@@ -995,5 +995,5 @@ class GrapheneDagitQuery(graphene.ObjectType):
         cursor: Optional[str],
     ):
         return fetch_auto_materialize_asset_evaluations(
-            instance=graphene_info.context.instance, asset_key=assetKey, cursor=cursor, limit=limit
+            graphene_info=graphene_info, graphene_asset_key=assetKey, cursor=cursor, limit=limit
         )
