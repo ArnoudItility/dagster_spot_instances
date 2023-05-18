@@ -1,6 +1,5 @@
 import datetime
 import logging  # noqa: F401; used by mock in string form
-import random
 import re
 import sys
 import time
@@ -3310,6 +3309,8 @@ class TestEventLogStorage:
 
     def test_concurrency(self, storage):
         assert storage
+        if not storage.supports_global_concurrency_limits:
+            pytest.skip("storage does not support global op concurrency")
 
         if self.can_wipe():
             storage.wipe()
@@ -3351,6 +3352,9 @@ class TestEventLogStorage:
         assert claim("foo", run_id_three, "step_8") == ConcurrencySlotStatus.BLOCKED
 
     def test_concurrency_priority(self, storage):
+        if not storage.supports_global_concurrency_limits:
+            pytest.skip("storage does not support global op concurrency")
+
         run_id = make_new_run_id()
 
         def claim(key, run_id, step_key, priority=0):
@@ -3407,6 +3411,9 @@ class TestEventLogStorage:
         assert claim("foo", run_id, "e") == ConcurrencySlotStatus.CLAIMED
 
     def test_concurrency_allocate_from_pending(self, storage):
+        if not storage.supports_global_concurrency_limits:
+            pytest.skip("storage does not support global op concurrency")
+
         if self.can_wipe():
             storage.wipe()
 
@@ -3450,6 +3457,9 @@ class TestEventLogStorage:
         assert storage.check_concurrency_claim("foo", run_id, "e").assigned_timestamp is not None
 
     def test_invalid_concurrency_limit(self, storage):
+        if not storage.supports_global_concurrency_limits:
+            pytest.skip("storage does not support global op concurrency")
+
         with pytest.raises(DagsterInvalidInvocationError):
             storage.set_concurrency_slots("foo", -1)
 
@@ -3457,6 +3467,9 @@ class TestEventLogStorage:
             storage.set_concurrency_slots("foo", 1001)
 
     def test_slot_downsize(self, storage):
+        if not storage.supports_global_concurrency_limits:
+            pytest.skip("storage does not support global op concurrency")
+
         if self.can_wipe():
             storage.wipe()
 
@@ -3487,6 +3500,9 @@ class TestEventLogStorage:
         assert foo_info.active_slot_count == 3
 
     def test_slot_upsize(self, storage):
+        if not storage.supports_global_concurrency_limits:
+            pytest.skip("storage does not support global op concurrency")
+
         if self.can_wipe():
             storage.wipe()
 
@@ -3533,11 +3549,15 @@ class TestEventLogStorage:
         assert foo_info.assigned_step_count == 4
 
     def test_threaded_concurrency(self, storage):
-        run_id = make_new_run_id()
+        if not storage.supports_global_concurrency_limits:
+            pytest.skip("storage does not support global op concurrency")
+
         if self.can_wipe():
             storage.wipe()
 
         TOTAL_TIMEOUT_TIME = 30
+
+        run_id = make_new_run_id()
 
         storage.set_concurrency_slots("foo", 5)
 
@@ -3546,7 +3566,6 @@ class TestEventLogStorage:
             claim_status = storage.claim_concurrency_slot("foo", run_id, key)
             while time.time() < start + TOTAL_TIMEOUT_TIME:
                 if claim_status.slot_status == ConcurrencySlotStatus.CLAIMED:
-                    time.sleep(random.random() * 0.1)
                     break
                 else:
                     claim_status = storage.claim_concurrency_slot("foo", run_id, key)
